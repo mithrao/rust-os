@@ -36,7 +36,11 @@ pub extern "C" fn _start() -> ! {
     // 默认命名为 `_start`
     
     // VGA
-    vga_buffer::print_something();
+    // 在这里，我们需要导入名为 fmt::Write 的 trait，来使用实现它的类的相应方法。
+    use core::fmt::Write;
+    vga_buffer::WRITER.lock().write_str("Hello again").unwrap();
+    write!(vga_buffer::WRITER.lock(), ", some numbers: {} {}", 42, 1.337).unwrap();
+
     loop {}
 }
 

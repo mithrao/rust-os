@@ -105,7 +105,29 @@ impl Writer {
         }
     }
 
-    fn new_line(&mut self) {}
+    // 换行
+    // 在之前的代码中，我们忽略了换行符，因此没有处理超出一行字符的情况。当换行时，我们想要把每个字符向上移动一行——此时最顶上的一行将被删除——然后在最后一行的起始位置继续打印。要做到这一点，我们要为 Writer 实现一个新的 new_line 方法：
+    fn new_line(&mut self) {
+        // 我们遍历每个屏幕上的字符，把每个字符移动到它上方一行的相应位置。这里，.. 符号是区间标号（range notation）的一种；它表示左闭右开的区间，因此不包含它的上界。在外层的枚举中，我们从第 1 行开始，省略了对第 0 行的枚举过程——因为这一行应该被移出屏幕，即它将被下一行的字符覆写。
+        for row in 1..BUFFER_HEIGHT {
+            for col in 0..BUFFER_WIDTH {
+                let character = self.buffer.chars[row][col].read();
+                self.buffer.chars[row - 1][col].write(character);
+            }
+        }
+        self.clear_row(BUFFER_HEIGHT - 1);
+        self.column_position = 0;
+    }
+
+    fn clear_row(&mut self, row: usize) {
+        let blank = ScreenChar {
+            ascii_character: b' ',
+            color_code: self.color_code,
+        };
+        for col in 0..BUFFER_WIDTH {
+            self.buffer.chars[row][col].write(blank);
+        }
+    }
 }
 
 // 格式化宏
@@ -121,24 +143,31 @@ impl fmt::Write for Writer {
 }
 //现在我们就可以使用 Rust 内置的格式化宏 write! 和 writeln! 了：
 
+// 全局接口
+// 编写其它模块时，我们希望无需随时拥有 Writer 实例，便能使用它的方法。我们尝试创建一个静态的 WRITER 变量：
 
-// VGA 字符缓冲区只支持 ASCII 码字节和代码页 437（Code page 437）定义的字节。Rust 语言的字符串默认编码为 UTF-8，也因此可能包含一些 VGA 字符缓冲区不支持的字节：我们使用 match 语句，来区别可打印的 ASCII 码或换行字节，和其它不可打印的字节。对每个不可打印的字节，我们打印一个 ■ 符号；这个符号在 VGA 硬件中被编码为十六进制的 0xfe。
-// 我们可以亲自试一试已经编写的代码。为了这样做，我们可以临时编写一个函数：
-pub fn print_something() {
-    use core::fmt::Write;
-    
-    // 这个函数首先创建一个指向 0xb8000 地址VGA缓冲区的 Writer。实现这一点，我们需要编写的代码可能看起来有点奇怪：首先，我们把整数 0xb8000 强制转换为一个可变的裸指针（raw pointer）；之后，通过运算符*，我们将这个裸指针解引用；最后，我们再通过 &mut，再次获得它的可变借用。这些转换需要 unsafe 语句块（unsafe block），因为编译器并不能保证这个裸指针是有效的。
-    // 然后它将字节 b'H' 写入缓冲区内. 前缀 b 创建了一个字节常量（byte literal），表示单个 ASCII 码字符；通过尝试写入 "ello " 和 "Wörld!"，我们可以测试 write_string 方法和其后对无法打印字符的处理逻辑
-    let mut writer = Writer {
+// 延迟初始化
+// 使用非常函数初始化静态变量是 Rust 程序员普遍遇到的问题。幸运的是，有一个叫做 lazy_static 的包提供了一个很棒的解决方案：它提供了名为 lazy_static! 的宏，定义了一个延迟初始化（lazily initialized）的静态变量；这个变量的值将在第一次使用时计算，而非在编译时计算。这时，变量的初始化过程将在运行时执行，任意的初始化代码——无论简单或复杂——都是能够使用的。
+// 在这里，由于程序不连接标准库，我们需要启用 spin_no_std 特性。使用 lazy_static 我们就可以定义一个不出问题的 WRITER 变量：
+
+use lazy_static::lazy_static;
+
+// spinlock: Mutex
+// 要定义同步的内部可变性，我们往往使用标准库提供的互斥锁类 Mutex，它通过提供当资源被占用时将线程阻塞（block）的互斥条件（mutual exclusion）实现这一点；但我们初步的内核代码还没有线程和阻塞的概念，我们将不能使用这个类。不过，我们还有一种较为基础的互斥锁实现方式——自旋锁（spinlock）。自旋锁并不会调用阻塞逻辑，而是在一个小的无限循环中反复尝试获得这个锁，也因此会一直占用 CPU 时间，直到互斥锁被它的占用者释放。
+use spin::Mutex;
+
+lazy_static! {
+    pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
         column_position: 0,
         color_code: ColorCode::new(Color::Yellow, Color::Black),
         buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
-    };
-
-    writer.write_byte(b'H');
-    writer.write_string("ello ");
-    // 现在我们就可以使用 Rust 内置的格式化宏 write! 和 writeln! 了：
-    // writer.write_string("Wörld!");
-    write!(writer, "The numbers are {} and {}", 42, 1.0/3.0).unwrap();
+    });
+    // 然而，这个 WRITER 可能没有什么用途，因为它目前还是不可变变量（immutable variable）：这意味着我们无法向它写入数据，因为所有与写入数据相关的方法都需要实例的可变引用 &mut self。一种解决方案是使用可变静态（mutable static）的变量，但所有对它的读写操作都被规定为不安全的（unsafe）操作，因为这很容易导致数据竞争或发生其它不好的事情——使用 static mut 极其不被赞成，甚至有一些提案认为应该将它删除。也有其它的替代方案，比如可以尝试使用比如 RefCell 或甚至 UnsafeCell 等类型提供的内部可变性（interior mutability）；但这些类型都被设计为非同步类型，即不满足 Sync 约束，所以我们不能在静态变量中使用它们。
 }
+
+// 为了明白现在发生了什么，我们需要知道一点：一般的变量在运行时初始化，而静态变量在编译时初始化。Rust编译器规定了一个称为常量求值器（const evaluator）的组件，它应该在编译时处理这样的初始化工作。虽然它目前的功能较为有限，但对它的扩展工作进展活跃，比如允许在常量中 panic 的一篇 RFC 文档。
+// 关于 ColorCode::new 的问题应该能使用常函数（const functions）解决，但常量求值器还存在不完善之处，它还不能在编译时直接转换裸指针到变量的引用——也许未来这段代码能够工作，但在那之前，我们需要寻找另外的解决方案。
+
+// 现在我们可以删除 print_something 函数，尝试直接在 _start 函数中打印字符：
+
 

@@ -36,6 +36,9 @@ bootloader = "0.9.23"
 # 要添加 volatile 包为项目的依赖项（dependency），我们可以在 Cargo.toml 文件的 dependencies 中添加下面的代码：
 volatile = "0.2.6"
 
+# spinlock for lazy static mutable objects
+spin = "0.5.2"
+
 # eh_personality
 # 用于实现栈展开（stack unwinding）
 
@@ -49,3 +52,10 @@ panic = "abort"
 panic = "abort"
 # 这些选项能将 dev 配置（dev profile）和 release 配置（release profile）的 panic 策略设为 abort。
 # dev 配置适用于 cargo build，而 release 配置适用于 cargo build --release。现在编译器应该不再要求我们提供 eh_personality 语言项实现。
+
+[dependencies.lazy_static]
+version = "1.0"
+features = ["spin_no_std"]
+
+
+
