@@ -1,0 +1,7 @@
+cargo:rerun-if-changed=/Users/cyanwh/rust-os/Cargo.toml
+cargo:rustc-link-search=native=/Users/cyanwh/rust-os/target/bootimage/bootloader/x86_64-bootloader/release/build/bootloader-1c28cc3e17ff1bcc/out
+cargo:rustc-link-lib=static=kernel_bin-rust-os
+cargo:rerun-if-env-changed=KERNEL
+cargo:rerun-if-env-changed=KERNEL_MANIFEST
+cargo:rerun-if-changed=/Users/cyanwh/rust-os/target/x86_64-rust_os/debug/rust-os
+cargo:rerun-if-changed=build.rs
