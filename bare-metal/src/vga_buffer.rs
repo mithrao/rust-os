@@ -170,4 +170,34 @@ lazy_static! {
 
 // 现在我们可以删除 print_something 函数，尝试直接在 _start 函数中打印字符：
 
+// 安全性
+// 经过上面的努力后，我们现在的代码只剩一个 unsafe 语句块，它用于创建一个指向 0xb8000 地址的 Buffer 类型引用；在这步之后，所有的操作都是安全的。Rust 将为每个数组访问检查边界，所以我们不会在不经意间越界到缓冲区之外。因此，我们把需要的条件编码到 Rust 的类型系统，这之后，我们为外界提供的接口就符合内存安全原则了。
+// Recall: 这个函数首先创建一个指向 0xb8000 地址VGA缓冲区的 Writer。实现这一点，我们需要编写的代码可能看起来有点奇怪：首先，我们把整数 0xb8000 强制转换为一个可变的裸指针（raw pointer）；之后，通过运算符*，我们将这个裸指针解引用；最后，我们再通过 &mut，再次获得它的可变借用。这些转换需要 unsafe 语句块（unsafe block），因为编译器并不能保证这个裸指针是有效的。
+
+// println! 宏
+// 现在我们有了一个全局的 Writer 实例，我们就可以基于它实现 println! 宏，这样它就能被任意地方的代码使用了。Rust 提供的宏定义语法需要时间理解，所以我们将不从零开始编写这个宏。我们先看看标准库中 println! 宏的实现源码：
+// 宏是通过一个或多个规则（rule）定义的，这就像 match 语句的多个分支。println! 宏有两个规则：第一个规则不要求传入参数——就比如 println!() ——它将被扩展为 print!("\n")，因此只会打印一个新行；第二个要求传入参数——好比 println!("Rust 能够编写操作系统") 或 println!("我学习 Rust 已经{}年了", 3)——它将使用 print! 宏扩展，传入它需求的所有参数，并在输出的字符串最后加入一个换行符 \n。
+// 这里，#[macro_export] 属性让整个包（crate）和基于它的包都能访问这个宏，而不仅限于定义它的模块（module）。它还将把宏置于包的根模块（crate root）下，这意味着比如我们需要通过 use std::println 来导入这个宏，而不是通过 std::macros::println。
+// 要打印到字符缓冲区，我们把 println! 和 print! 两个宏复制过来，但修改部分代码，让这些宏使用我们定义的 _print 函数：
+
+// 就像标准库做的那样，我们为两个宏都添加了 #[macro_export] 属性，这样在包的其它地方也可以使用它们。需要注意的是，这将占用包的根命名空间（root namespace），所以我们不能通过 use crate::vga_buffer::println 来导入它们；我们应该使用 use crate::println。
+#[macro_export]
+macro_rules! print {
+    // 我们首先修改了 println! 宏，在每个使用的 print! 宏前面添加了 $crate 变量。这样我们在只需要使用 println! 时，不必也编写代码导入 print! 宏。
+    ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! println {
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
+}
+
+// 如果这个宏将能在模块外访问，它们也应当能访问 _print 函数，因此这个函数必须是公有的（public）。然而，考虑到这是一个私有的实现细节，我们添加一个 doc(hidden) 属性，防止它在生成的文档中出现。
+#[doc(hidden)]
+pub fn _print(args: fmt::Arguments) {
+    use core::fmt::Write;
+    // 另外，_print 函数将占有静态变量 WRITER 的锁，并调用它的 write_fmt 方法。这个方法是从名为 Write 的 trait 中获得的，所以我们需要导入这个 trait。额外的 unwrap() 函数将在打印不成功的时候 panic；但既然我们的 write_str 总是返回 Ok，这种情况不应该发生。
+    WRITER.lock().write_fmt(args).unwrap();
+}
 

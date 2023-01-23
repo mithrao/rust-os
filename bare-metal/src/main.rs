@@ -10,10 +10,11 @@ use core::panic::PanicInfo;
 #[panic_handler]
 // 类型为 PanicInfo 的参数包含了 panic 发生的文件名、代码行数和可选的错误信息。这个函数从不返回，所以他被标记为发散函数（diverging function）
 // 发散函数的返回类型称作 Never 类型（“never” type），记为!
-fn panic(_info: &PanicInfo) -> ! {
-    loop {
-        
-    }
+fn panic(info: &PanicInfo) -> ! {
+    // 既然我们已经有了 println! 宏，我们可以在 panic 处理函数中，使用它打印 panic 信息和 panic 产生的位置：
+    println!("{}", info);
+
+    loop {    }
 }
 
 // start语言项 - 程序entry point
@@ -36,10 +37,12 @@ pub extern "C" fn _start() -> ! {
     // 默认命名为 `_start`
     
     // VGA
-    // 在这里，我们需要导入名为 fmt::Write 的 trait，来使用实现它的类的相应方法。
-    use core::fmt::Write;
-    vga_buffer::WRITER.lock().write_str("Hello again").unwrap();
-    write!(vga_buffer::WRITER.lock(), ", some numbers: {} {}", 42, 1.337).unwrap();
+    // 使用 println! 的 Hello World
+    // 要注意的是，我们在入口函数中不需要导入这个宏——因为它已经被置于包的根命名空间了。
+    println!("Hello World{}", "!");
+
+    //当我们在 _start 函数中插入一行 panic!("Some panic message"); 后，我们得到了这样的输出：
+    panic!("Some panic message");
 
     loop {}
 }
