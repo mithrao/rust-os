@@ -7,21 +7,6 @@ edition = "2018"
 
 [dependencies]
 bootloader = "0.9.23"
-
-# eh_personality
-# 用于实现栈展开（stack unwinding）
-
-# 禁用栈展开
-# 在其它一些情况下，栈展开并不是迫切需求的功能；因此，Rust 提供了在 panic 时中止（abort on panic）的选项。
-# 这个选项能禁用栈展开相关的标志信息生成，也因此能缩小生成的二进制程序的长度
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "abort"
-# 这些选项能将 dev 配置（dev profile）和 release 配置（release profile）的 panic 策略设为 abort。
-# dev 配置适用于 cargo build，而 release 配置适用于 cargo build --release。现在编译器应该不再要求我们提供 eh_personality 语言项实现。
-
 # 创建引导映像
 # 要将可执行程序转换为可引导的映像（bootable disk image），我们需要把它和引导程序链接。这里，引导程序将负责初始化 CPU 并加载我们的内核。
 # 编写引导程序并不容易，所以我们不编写自己的引导程序，而是使用已有的 bootloader 包；无需依赖于 C 语言，这个包基于 Rust 代码和内联汇编，实现了一个五脏俱全的 BIOS 引导程序。为了用它启动我们的内核，我们需要将它添加为一个依赖项，
@@ -47,3 +32,20 @@ panic = "abort"
 # Booting it in qemu
 # (in rust-os dir) `qemu-system-x86_64 -drive format=raw,file=target/x86_64-rust_os/debug/bootimage-rust-os.bin`
 # release mouse: control + option + q
+
+# 要添加 volatile 包为项目的依赖项（dependency），我们可以在 Cargo.toml 文件的 dependencies 中添加下面的代码：
+volatile = "0.2.6"
+
+# eh_personality
+# 用于实现栈展开（stack unwinding）
+
+# 禁用栈展开
+# 在其它一些情况下，栈展开并不是迫切需求的功能；因此，Rust 提供了在 panic 时中止（abort on panic）的选项。
+# 这个选项能禁用栈展开相关的标志信息生成，也因此能缩小生成的二进制程序的长度
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+# 这些选项能将 dev 配置（dev profile）和 release 配置（release profile）的 panic 策略设为 abort。
+# dev 配置适用于 cargo build，而 release 配置适用于 cargo build --release。现在编译器应该不再要求我们提供 eh_personality 语言项实现。

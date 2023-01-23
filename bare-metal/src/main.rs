@@ -24,7 +24,6 @@ fn panic(_info: &PanicInfo) -> ! {
 // 我们的独立式可执行程序并不能访问 Rust 运行时或 crt0 库，所以我们需要定义自己的入口点。只实现一个 start 语言项并不能帮助我们，因为这之后程序依然要求 crt0 库。所以，我们要做的是，直接重写整个 crt0 库和它定义的入口点。
 
 // VGA
-static HELLO: &[u8] = b"Hello World";
 
 // 我们移除了 main 函数。原因很显然，既然没有底层运行时调用它，main 函数也失去了存在的必要性。为了重写操作系统的入口点，我们转而编写一个 _start 函数：
 #[no_mangle]
@@ -37,21 +36,8 @@ pub extern "C" fn _start() -> ! {
     // 默认命名为 `_start`
     
     // VGA
-    // 在这段代码中，我们预先定义了一个字节字符串（byte string）类型的静态变量（static variable），名为 HELLO。我们首先将整数 0xb8000 转换（cast）为一个裸指针（raw pointer）。这之后，我们迭代 HELLO 的每个字节，使用 enumerate 获得一个额外的序号变量 i。在 for 语句的循环体中，我们使用 offset 偏移裸指针，解引用它，来将字符串的每个字节和对应的颜色字节——0xb 代表淡青色——写入内存位置
-    let vga_buffer = 0xb8000 as *mut u8;
-
-    for (i, &byte) in HELLO.iter().enumerate() {
-        // 要注意的是，所有的裸指针内存操作都被一个 unsafe 语句块（unsafe block）包围。这是因为，此时编译器不能确保我们创建的裸指针是有效的；一个裸指针可能指向任何一个你内存位置；直接解引用并写入它，也许会损坏正常的数据。使用 unsafe 语句块时，程序员其实在告诉编译器，自己保证语句块内的操作是有效的。事实上，unsafe 语句块并不会关闭 Rust 的安全检查机制；它允许你多做的事情只有四件。
-        // 在这样的前提下，我们希望最小化 unsafe 语句块的使用。使用 Rust 语言，我们能够将不安全操作将包装为一个安全的抽象模块。举个例子，我们可以创建一个 VGA 缓冲区类型，把所有的不安全语句封装起来，来确保从类型外部操作时，无法写出不安全的代码：通过这种方式，我们只需要最少的 unsafe 语句块来确保我们不破坏内存安全（memory safety）。
-        unsafe {
-            *vga_buffer.offset(i as isize * 2) = byte;
-            *vga_buffer.offset(i as isize * 2 + 1) = 0xb;
-        }
-    }
-
-    loop {
-        
-    }
+    vga_buffer::print_something();
+    loop {}
 }
 
 // linker error
@@ -124,3 +110,21 @@ pub extern "C" fn _start() -> ! {
 // 启动内核
 // 既然我们已经有了一个能够打印字符的可执行程序，是时候把它运行起来试试看了。首先，我们将编译完毕的内核与引导程序链接，来创建一个引导映像；这之后，我们可以在 QEMU 虚拟机中运行它，或者通过 U 盘在真机上运行。
 // `qemu-system-x86_64 -drive format=raw,file=target/x86_64-rust_os/debug/bootimage-rust-os.bin`
+
+
+// ===================================
+// ch3. VGA Text Mode
+// https://os.phil-opp.com/zh-CN/vga-text-mode/#vga-zi-fu-huan-chong-qu
+
+// VGA 字符缓冲区
+// 要修改 VGA 字符缓冲区，我们可以通过存储器映射输入输出（memory-mapped I/O）的方式，读取或写入地址 0xb8000；这意味着，我们可以像操作普通的内存区域一样操作这个地址。
+// 需要注意的是，一些硬件虽然映射到存储器，但可能不会完全支持所有的内存操作：可能会有一些设备支持按 u8 字节读取，但在读取 u64 时返回无效的数据。幸运的是，字符缓冲区都支持标准的读写操作，所以我们不需要用特殊的标准对待它。
+
+// 包装到 Rust 模块
+// 我们的模块暂时不需要添加子模块，所以我们将它创建为 src/vga_buffer.rs 文件。
+mod vga_buffer;
+
+// 易失操作
+// 我们刚才看到，自己想要输出的信息被正确地打印到屏幕上。然而，未来 Rust 编译器更暴力的优化可能让这段代码不按预期工作。
+// 产生问题的原因在于，我们只向 Buffer 写入，却不再从它读出数据。此时，编译器不知道我们事实上已经在操作 VGA 缓冲区内存，而不是在操作普通的 RAM——因此也不知道产生的副效应（side effect），即会有几个字符显示在屏幕上。这时，编译器也许会认为这些写入操作都没有必要，甚至会选择忽略这些操作！所以，为了避免这些并不正确的优化，这些写入操作应当被指定为易失操作。这将告诉编译器，这些写入可能会产生副效应，不应该被优化掉。
+// 为了在我们的 VGA 缓冲区中使用易失的写入操作，我们使用 volatile 库。这个包（crate）提供一个名为 Volatile 的包装类型（wrapping type）和它的 read、write 方法；这些方法包装了 core::ptr 内的 read_volatile 和 write_volatile 函数，从而保证读操作或写操作不会被编译器优化。
