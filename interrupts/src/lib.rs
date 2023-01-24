@@ -4,10 +4,14 @@
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
+// enable x86-interrupts
+#![feature(abi_x86_interrupt)]
+
 use core::panic::PanicInfo;
 
 pub mod serial;
 pub mod vga_buffer;
+pub mod interrupts;
 
 pub trait Testable {
     fn run(&self) -> ();
@@ -56,9 +60,12 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
 }
 
 /// Entry point for `cargo xtest`
+/// this _start function is used when running `cargo test --lib`
 #[cfg(test)]
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    // add a test for exception
+    init();
     test_main();
     loop {}
 }
@@ -67,4 +74,9 @@ pub extern "C" fn _start() -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     test_panic_handler(info)
+}
+
+/// init IDT
+pub fn init() {
+    interrupts::init_idt();
 }
