@@ -14,10 +14,19 @@ pub extern "C" fn _start() -> ! {
     // initialize os (now only IDT) 
     blog_os::init();
 
-    // What happens if our kernel overflows its stack and the guard page is hit?
-    // When a page fault occurs, the CPU looks up the page fault handler in the IDT and tries to push the interrupt stack frame onto the stack. However, the current stack pointer still points to the non-present guard page. Thus, a second page fault occurs, which causes a double fault (according to the above table).
-    // So the CPU tries to call the double fault handler now. However, on a double fault, the CPU tries to push the exception stack frame, too. The stack pointer still points to the guard page, so a third page fault occurs, which causes a triple fault and a system reboot. So our current double fault handler can’t avoid a triple fault in this case.
-    
+    // 0x204f76: a code page (read-only)
+    let ptr = 0x204f76 as *mut u32;
+
+    // read from the code page
+    unsafe { let x = *ptr; }
+    println!("read worked!");
+
+    // write to the code page
+    unsafe { *ptr = 42; }
+    println!("write worked!");
+
+    // by running `cargo run`, we see that the read access works, but the write access causes a page fault
+
     #[cfg(test)]
     test_main();
 
