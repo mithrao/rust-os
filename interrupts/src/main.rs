@@ -18,19 +18,15 @@ pub extern "C" fn _start() -> ! {
     // When a page fault occurs, the CPU looks up the page fault handler in the IDT and tries to push the interrupt stack frame onto the stack. However, the current stack pointer still points to the non-present guard page. Thus, a second page fault occurs, which causes a double fault (according to the above table).
     // So the CPU tries to call the double fault handler now. However, on a double fault, the CPU tries to push the exception stack frame, too. The stack pointer still points to the guard page, so a third page fault occurs, which causes a triple fault and a system reboot. So our current double fault handler can’t avoid a triple fault in this case.
     
-    // provoke a kernel stack overflow by calling a function that recurses endlessly:
-    fn stack_overflow() {
-        stack_overflow(); // for each recursion, the return address is pushed
-    }
-
-    // trigger a stack overflow
-    stack_overflow();
-    
     #[cfg(test)]
     test_main();
 
     println!("It didn't crash");
-    loop {}
+    loop {
+        use blog_os::print;
+        // Provoking a Deadlock (计时器中断对应的处理函数触发了输出宏中潜在的死锁)
+        print!("-");
+    }
 }
 
 /// This function is called on panic.

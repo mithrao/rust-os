@@ -1,7 +1,18 @@
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-use crate::{println, gdt};
+use crate::{println, print, gdt};
 // static mut is prone to data races
 use lazy_static::lazy_static;
+// intel 8259 programmable interrupt controller (PIC)
+use pic8259::ChainedPics;
+use spin;
+
+// 将PIC的中断编号范围设定为了32–47
+pub const PIC_1_OFFSET: u8 = 32;
+pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
+
+// 我们使用 Mutex 容器包裹了 ChainedPics，这样就可以通过（lock 函数）拿到被定义为安全的变量修改权限
+pub static PICS: spin::Mutex<ChainedPics> = 
+    spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -13,6 +24,12 @@ lazy_static! {
             idt.double_fault.set_handler_fn(double_fault_handler)
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
+
+        // 为计时器中断添加一个处理函数
+        // InterruptDescriptorTable 结构实现了 IndexMut trait，所以我们可以通过序号来单独修改某一个条目。
+        idt[InterruptIndex::Timer.as_usize()]
+            .set_handler_fn(timer_interrupt_handler);
+
         idt
     };
 }
@@ -29,14 +46,30 @@ pub fn init_idt() {
 
 // x86-interrupt calling convention is still unstable
 // To use it anyway, we have to explicitly enable it by adding #![feature(abi_x86_interrupt)] at the top of our lib.rs
-extern "x86-interrupt" fn  breakpoint_handler(stack_frame: InterruptStackFrame) {
+// breakpoint interrupt handler
+extern "x86-interrupt" fn  breakpoint_handler(
+    stack_frame: InterruptStackFrame) 
+{
     println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
+// double fault exception handler
 extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame, _error_code: u64) -> !
 {
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
+}
+
+// timer interrupt handler
+extern "x86-interrupt" fn timer_interrupt_handler(
+    _stack_frame: InterruptStackFrame)
+{
+    print!(".");
+
+    unsafe {
+        PICS.lock()
+            .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
+    }
 }
 
 /// create a test_breakpoint_exception test
@@ -44,4 +77,23 @@ extern "x86-interrupt" fn double_fault_handler(
 fn test_breakpoint_exception() {
     // invoke a breakpoint exception
     x86_64::instructions::interrupts::int3();
+}
+
+/// 处理计时器中断
+/// 我们已经知道 计时器组件 使用了主PIC的0号管脚，根据上文中我们定义的序号偏移量32，所以计时器对应的中断序号也是32。但是不要将32硬编码进去，我们将其存储到枚举类型 InterruptIndex 中:
+#[derive(Debug, Clone, Copy)]
+// repr(u8) 开关使枚举值对应的数值以 u8 格式进行存储，这样未来我们可以在这里加入更多的中断枚举。
+#[repr(u8)]
+pub enum InterruptIndex {
+    Timer = PIC_1_OFFSET,
+}
+
+impl InterruptIndex {
+    fn as_u8(self) -> u8 {
+        self as u8 
+    }
+
+    fn as_usize(self) -> usize {
+        usize::from(self.as_u8())
+    }
 }

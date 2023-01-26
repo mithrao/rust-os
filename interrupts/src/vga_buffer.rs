@@ -163,11 +163,18 @@ macro_rules! println {
     ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }
 
-/// Prints the given formatted string to the VGA text buffer through the global `WRITER` instance.
+/// Prints the given formatted string to the VGA text buffer 
+/// through the global `WRITER` instance.
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    WRITER.lock().write_fmt(args).unwrap();
+    use x86_64::instructions::interrupts; 
+
+    // 修复死锁: 要避免死锁，我们可以在 Mutex 被锁定时禁用中断：
+    // without_interrupts 函数可以使一个 闭包 代码块在无中断环境下执行，由此我们可以让 Mutex 变量在锁定期间的执行逻辑不会被中断信号打断。
+    interrupts::without_interrupts(|| {
+        WRITER.lock().write_fmt(args).unwrap();
+    });
 }
 
 #[test_case]
@@ -184,10 +191,21 @@ fn test_println_many() {
 
 #[test_case]
 fn test_println_output() {
+    use core::fmt::Write;
+    use x86_64::instructions::interrupts;
+
     let s = "Some test string that fits on a single line";
-    println!("{}", s);
-    for (i, c) in s.chars().enumerate() {
-        let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
-        assert_eq!(char::from(screen_char.ascii_character), c);
-    }
+    // 修复竞态条件
+    // 为了避免死锁，我们同时在测试函数执行期间禁用中断，否则中断处理函数可能会意外被触发。
+    interrupts::without_interrupts(|| {
+        // 我们使用 lock() 函数显式加锁
+        let mut writer = WRITER.lock();
+        // 将 println 改为 writeln 宏，以此绕开输出必须加锁的限制。
+        // 为了防止在测试执行前计时器中断被触发所造成的干扰，我们先输出一句 \n，即可避免行首出现多余的 ". 造成的干扰
+        writeln!(writer, "\n{}", s).expect("writeln failed");
+        for (i, c) in s.chars().enumerate() {
+            let screen_char = writer.buffer.chars[BUFFER_HEIGHT - 2][i].read();
+            assert_eq!(char::from(screen_char.ascii_character), c);
+        }
+    });
 }
