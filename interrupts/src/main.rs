@@ -14,9 +14,18 @@ pub extern "C" fn _start() -> ! {
     // initialize os (now only IDT) 
     blog_os::init();
 
-    // invoke a breakpoint exception
-    x86_64::instructions::interrupts::int3();
+    // What happens if our kernel overflows its stack and the guard page is hit?
+    // When a page fault occurs, the CPU looks up the page fault handler in the IDT and tries to push the interrupt stack frame onto the stack. However, the current stack pointer still points to the non-present guard page. Thus, a second page fault occurs, which causes a double fault (according to the above table).
+    // So the CPU tries to call the double fault handler now. However, on a double fault, the CPU tries to push the exception stack frame, too. The stack pointer still points to the guard page, so a third page fault occurs, which causes a triple fault and a system reboot. So our current double fault handler can’t avoid a triple fault in this case.
+    
+    // provoke a kernel stack overflow by calling a function that recurses endlessly:
+    fn stack_overflow() {
+        stack_overflow(); // for each recursion, the return address is pushed
+    }
 
+    // trigger a stack overflow
+    stack_overflow();
+    
     #[cfg(test)]
     test_main();
 

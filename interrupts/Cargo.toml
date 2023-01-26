@@ -8,6 +8,11 @@ edition = "2018"
 name = "should_panic"
 harness = false
 
+# 就如同 panic_handler 这个测试一样，stack_overflow测试应该是一个 无约束测试，其原因就是我们无法在 double fault 被抛出后继续运行，所以连续进行多个测试其实是说不通的。要将测试修改为无约束模式，我们需要将这一段配置加入 Cargo.toml：
+[[test]]
+name = "stack_overflow"
+harness = false
+
 [dependencies]
 bootloader = "0.9.8"
 volatile = "0.2.6"

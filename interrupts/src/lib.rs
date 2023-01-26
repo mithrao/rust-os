@@ -12,6 +12,8 @@ use core::panic::PanicInfo;
 pub mod serial;
 pub mod vga_buffer;
 pub mod interrupts;
+// create a new TSS that contains a separate double fault stack in its interrupt stack table.
+pub mod gdt;
 
 pub trait Testable {
     fn run(&self) -> ();
@@ -78,5 +80,6 @@ fn panic(info: &PanicInfo) -> ! {
 
 /// init IDT
 pub fn init() {
+    gdt::init();
     interrupts::init_idt();
 }
