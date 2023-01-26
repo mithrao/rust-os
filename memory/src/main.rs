@@ -22,10 +22,17 @@ pub extern "C" fn _start() -> ! {
     println!("read worked!");
 
     // write to the code page
-    unsafe { *ptr = 42; }
-    println!("write worked!");
-
+    // unsafe { *ptr = 42; }
+    // println!("write worked!");
     // by running `cargo run`, we see that the read access works, but the write access causes a page fault
+
+    use x86_64::registers::control::Cr3;
+
+    // Accessing the Page Tables
+    // x86_64 crate 中的 Cr3::read 函数可以返回 CR3 寄存器中的当前使用的4级页表，它返回的是 PhysFrame 和 Cr3Flags 两个类型组成的元组结构。不过此时我们只关心页帧信息，所以第二个元素暂且不管。
+    let (level_4_page_table, _) = Cr3::read();
+    println!("Level 4 page table at: {:?}", level_4_page_table.start_address());
+    // 当前的4级页表存储在 物理地址 0x1000 处，而且地址的外层数据结构是 PhysAddr
 
     #[cfg(test)]
     test_main();
