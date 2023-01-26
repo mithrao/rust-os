@@ -42,7 +42,14 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     serial_println!("[failed]\n");
     serial_println!("Error: {}\n", info);
     exit_qemu(QemuExitCode::Failed);
-    loop {}
+    hlt_loop();
+}
+
+// 让CPU在下一个中断触发之前休息一下，也就是进入休眠状态来节省一点点能源。[hlt instruction][hlt 指令] 可以让我们做到这一点
+pub fn hlt_loop() -> ! {
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +76,7 @@ pub extern "C" fn _start() -> ! {
     // add a test for exception
     init();
     test_main();
-    loop {}
+    hlt_loop();
 }
 
 #[cfg(test)]
@@ -87,11 +94,4 @@ pub fn init() {
     x86_64::instructions::interrupts::enable();
     // x86_64 crate 中的 interrupts::enable 会执行特殊的 sti (“set interrupts”) 指令来启用外部中断。当我们试着执行 cargo run 后，double fault 异常几乎是立刻就被抛出了
     // 其原因就是硬件计时器（准确的说，是Intel 8253）默认是被启用的，所以在启用中断控制器之后，CPU开始接收到计时器中断信号，而我们又并未设定相对应的处理函数，所以就抛出了 double fault 异常。
-}
-
-// 让CPU在下一个中断触发之前休息一下，也就是进入休眠状态来节省一点点能源。[hlt instruction][hlt 指令] 可以让我们做到这一点
-pub fn hlt_loop() -> ! {
-    loop {
-        x86_64::instructions::hlt();
-    }
 }

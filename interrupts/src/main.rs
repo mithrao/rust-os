@@ -22,11 +22,9 @@ pub extern "C" fn _start() -> ! {
     test_main();
 
     println!("It didn't crash");
-    loop {
-        use blog_os::print;
-        // Provoking a Deadlock (计时器中断对应的处理函数触发了输出宏中潜在的死锁)
-        print!("-");
-    }
+
+    // save energy
+    blog_os::hlt_loop();
 }
 
 /// This function is called on panic.
@@ -34,7 +32,7 @@ pub extern "C" fn _start() -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
-    loop {}
+    blog_os::hlt_loop();
 }
 
 #[cfg(test)]
