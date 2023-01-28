@@ -14,15 +14,20 @@ name = "stack_overflow"
 harness = false
 
 [dependencies]
-bootloader = "0.9.8"
 volatile = "0.2.6"
 spin = "0.5.2"
 x86_64 = "0.14.2"
 uart_16550 = "0.2.0"
+
 # Intel 8259 是一款于1976年发布的可编程中断控制器（programmable interrupt controller, PIC），事实上，它已经被更先进的 APIC 替代很久了，但其接口依然出于兼容问题被现有系统所支持。
 # 8529具有8个中断管脚和一个和CPU通信的独立管脚，而当年的典型系统一般会安装两片 8259 PIC ，一个作为主芯片，另一个则作为副芯片
 pic8259 = "0.10.1"
 pc-keyboard = "0.5.0"
+
+# bootloader creates the page tables that our kernel runs on
+# The map_physical_memory feature maps the complete physical memory somewhere into the virtual address space. Thus, the kernel has access to all physical memory and can follow the Map the Complete Physical Memory approach.
+# With the recursive_page_table feature, the bootloader maps an entry of the level 4 page table recursively. This allows the kernel to access the page tables as described in the Recursive Page Tables section.
+bootloader = { version = "0.9.23", features = ["map_physical_memory"] }
 
 [dependencies.lazy_static]
 version = "1.0"

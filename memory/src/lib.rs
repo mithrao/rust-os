@@ -95,3 +95,24 @@ pub fn init() {
     // x86_64 crate 中的 interrupts::enable 会执行特殊的 sti (“set interrupts”) 指令来启用外部中断。当我们试着执行 cargo run 后，double fault 异常几乎是立刻就被抛出了
     // 其原因就是硬件计时器（准确的说，是Intel 8253）默认是被启用的，所以在启用中断控制器之后，CPU开始接收到计时器中断信号，而我们又并未设定相对应的处理函数，所以就抛出了 double fault 异常。
 }
+
+
+// Since the entry point is only used in test mode, we add the #[cfg(test)] attribute to all items. We give our test entry point the distinct name test_kernel_main to avoid confusion with the kernel_main of our main.rs. We don’t use the BootInfo parameter for now, so we prefix the parameter name with a _ to silence the unused variable warning.
+#[cfg(test)]
+use bootloader::{entry_point, BootInfo};
+
+#[cfg(test)]
+entry_point!(test_kernel_main);
+
+/// Entry point for `cargo test`
+#[cfg(test)]
+fn test_kernel_main(_boot_info: &'static BootInfo) -> ! {
+    // like before
+    init();
+    test_main();
+    hlt_loop();
+}
+
+// implement page table 
+pub mod memory;
+
