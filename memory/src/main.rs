@@ -4,7 +4,7 @@
 #![test_runner(blog_os::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-use blog_os::println;
+use blog_os::{println, memory::translate_addr};
 use x86_64::structures::paging::PageTable;
 use core::panic::PanicInfo;
 use bootloader::{BootInfo, entry_point};
@@ -22,35 +22,26 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     println!("Hello World{}", "!");
     blog_os::init();
 
-    // 1. convert the physical_memory_offset of the BootInfo struct to a VirtAddr and pass it to the active_level_4_table function.
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
-    let l4_table = unsafe {
-        active_level_4_table(phys_mem_offset)
-    };
-    
-    // 2. use the iter function to iterate over the page table entries and the enumerate combinator to additionally add an index i to each element.
-    for (i, entry) in l4_table.iter().enumerate() {
-        // (only print non-empty entries because all 512 entries wouldn’t fit on the screen)
-        if !entry.is_unused() {
-            println!("L4 Entry {}: {:?}", i, entry);
+    let addresses = [
+        // the identity-mapped vga buffer page
+        0xb8000,
+        // The code page and the stack page translate to some arbitrary physical addresses, which depend on how the bootloader created the initial mapping for our kernel.
+        // some code page
+        0x201008,
+        // some stack page
+        0x0100_0020_1a10,
+        // virtual address mapped to physical address 0
+        boot_info.physical_memory_offset,
+    ];
+    // the last 12 bits always stay the same after translation, which makes sense because these bits are the page offset and not part of the translation.
 
-            // (L4 -> L3 -> L2 -> L1)
-            // To traverse the page tables further and take a look at a level 3 table, we can take the mapped frame of an entry and convert it to a virtual address again:
-            // get the physical address from the entry and convert it
-            let phys = entry.frame().unwrap().start_address();
-            let virt = phys.as_u64() + boot_info.physical_memory_offset;
-            let ptr = VirtAddr::new(virt).as_mut_ptr();
-            let l3_table: &PageTable = unsafe {
-                &*ptr
-            };
-
-            // print non-empty entry of the level 3 table
-            for (i, entry) in l3_table.iter().enumerate() {
-                if !entry.is_unused() {
-                    println!("  L3 Entry {}: {:?}", i, entry);
-                }
-            }
-        }
+    for &address in &addresses {
+        let virt = VirtAddr::new(address);
+        let phys = unsafe {
+            translate_addr(virt, phys_mem_offset)
+        };
+        println!("{:?} -> {:?}", virt, phys);
     }
 
     #[cfg(test)]
