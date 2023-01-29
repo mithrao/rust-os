@@ -1,6 +1,8 @@
 [unstable]
-build-std = ["core", "compiler_builtins"]
+# Since we are compiling for a custom target, we can’t use the precompiled version of alloc that is shipped with the Rust installation. Instead, we have to tell cargo to recompile the crate from source. We can do that by adding it to the unstable.build-std array in our .cargo/config.toml file:
+build-std = ["core", "compiler_builtins", "alloc"]
 build-std-features = ["compiler-builtins-mem"]
+
 
 [build]
 target = "x86_64-blog_os.json"

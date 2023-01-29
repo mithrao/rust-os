@@ -4,6 +4,10 @@
 #![test_runner(blog_os::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
+// Note that we need to specify the extern crate alloc statement in our main.rs too. This is required because the lib.rs and main.rs parts are treated as separate crates. However, we don’t need to create another #[global_allocator] static because the global allocator applies to all crates in the project. In fact, specifying an additional allocator in another crate would be an error.
+extern crate alloc;
+
+use alloc::boxed::Box;
 use blog_os::{println};
 use core::panic::PanicInfo;
 use bootloader::{BootInfo, entry_point};
@@ -45,6 +49,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
         // We write the value 0x_f021_f077_f065_f04e, which represents the string “New!” on a white background. 
         page_ptr.offset(400).write_volatile(0x_f021_f077_f065_f04e);
     }
+
+    // use a Box to allocate a value on the heap
+    // The error handler is called because the Box::new function implicitly calls the alloc function of the global allocator. Our dummy allocator always returns a null pointer, so every allocation fails.
+    let x = Box::new(41);
 
     #[cfg(test)]
     test_main();

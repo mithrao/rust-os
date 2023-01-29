@@ -15,7 +15,7 @@ use x86_64::{
 
 // Translating virtual to physical addresses is a common task in an OS kernel, therefore the x86_64 crate provides an abstraction for it. The implementation already supports huge pages and several other page table functions apart from translate_addr, so we will use it in the following instead of adding huge page support to our own implementation.
 // The OffsetPageTable type assumes that the complete physical memory is mapped to the virtual address space at some offset. 
-use x86_64::structures::paging::{OffsetPageTable, frame};
+use x86_64::structures::paging::OffsetPageTable;
 
 use bootloader::bootinfo::MemoryMap;
 use bootloader::bootinfo::MemoryRegionType;
