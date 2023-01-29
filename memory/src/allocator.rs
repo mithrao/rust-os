@@ -1,4 +1,7 @@
-use linked_list_allocator::LockedHeap;
+use bump::BumpAllocator;
+
+// bump allocator
+pub mod bump;
 
 /// creating a kernel heap
 /// 
@@ -12,7 +15,7 @@ pub const HEAP_SIZE:  usize = 100 * 1024; // 100 KiB
 #[global_allocator]
 // The struct is named LockedHeap because it uses the spinning_top::Spinlock type for synchronization. This is required because multiple threads could access the ALLOCATOR static at the same time.
 // As always, when using a spinlock or a mutex, we need to be careful to not accidentally cause a deadlock. This means that we shouldn’t perform any allocations in interrupt handlers, since they can run at an arbitrary time and might interrupt an in-progress allocation.
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
+static ALLOCATOR: Locked<BumpAllocator> = Locked::new(BumpAllocator::new());
 
 use x86_64::{
     structures::paging::{
@@ -66,3 +69,28 @@ pub fn init_heap(
 
     Ok(())
 }
+
+/// We can't use `unsafe impl GlobalAlloc for spin::Mutex<BumpAllocator> {...}` 
+/// because the Rust compiler does not permit trait implementations for types defined in other crates
+/// we need to create our own wrapper type around spin::Mutex
+pub struct Locked<A> {
+    inner: spin::Mutex<A>,
+}
+
+impl <A> Locked<A> {
+    pub const fn new(inner: A) -> Self {
+        Locked { inner: spin::Mutex::new(inner), }
+    }
+
+    pub fn lock(&self) -> spin::MutexGuard<A> {
+        self.inner.lock()
+    }
+}
+
+
+/// Align the given address `addr` upwards to alignment `align`.
+fn align_up(addr: usize, align: usize) -> usize {
+    //  to create a bitmask to align the address in a very efficient way.
+    (addr + align - 1) & !(align - 1)
+}
+
