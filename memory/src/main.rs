@@ -16,35 +16,35 @@ entry_point!(kernel_main);
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // We can now use [active_level_4_table] (/src/memory.rs) to print the entries of the level 4 table:
     use blog_os::memory;
-    use x86_64::{structures::paging::Translate, VirtAddr};
+    use x86_64::{structures::paging::Page, VirtAddr};
 
     println!("Hello World{}", "!");
     blog_os::init();
 
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
     // initialize a mapper
-    let mapper = unsafe {
+    let mut mapper = unsafe {
         memory::init(phys_mem_offset)
     };
+
     
-    let addresses = [
-        // the identity-mapped vga buffer page
-        0xb8000,
-        // some code page
-        0x201008,
-        // some stack page
-        0x0100_0020_1a10,
-        // virtual address mapped to physical address 0
-        boot_info.physical_memory_offset,
-    ];
+    // create the mapping
+    let mut frame_allocator = memory::EmptyFrameAllocator;
+    // map an unused page
+    let page = Page::containing_address(VirtAddr::new(0));
+    // 1. Create the mapping for the page at address 0 by calling our create_example_mapping function with a mutable reference to the mapper and the frame_allocator instances. 
+    //    This maps the page to the VGA text buffer frame, so we should see any write to it on the screen.
+    memory::create_example_mapping(page, &mut mapper, &mut frame_allocator);
 
-    for &address in &addresses {
-        let virt = VirtAddr::new(address);
-        // use the `mapper.translate_addr` method to do address translation
-        let phys = mapper.translate_addr(virt);
-        println!("{:?} -> {:?}", virt, phys);
+    // write the string `New!` to the screen through the new mapping
+    // 2. convert the page to a raw pointer and write a value to offset 400
+    let page_ptr: *mut u64 = page.start_address().as_mut_ptr();
+    unsafe {
+        // offset 400: We don’t write to the start of the page because the top line of the VGA buffer is directly shifted off the screen by the next println.
+        // We write the value 0x_f021_f077_f065_f04e, which represents the string “New!” on a white background. 
+        page_ptr.offset(400).write_volatile(0x_f021_f077_f065_f04e);
     }
-
+    
     #[cfg(test)]
     test_main();
 
