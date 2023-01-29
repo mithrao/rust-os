@@ -15,7 +15,10 @@ use x86_64::{
 
 // Translating virtual to physical addresses is a common task in an OS kernel, therefore the x86_64 crate provides an abstraction for it. The implementation already supports huge pages and several other page table functions apart from translate_addr, so we will use it in the following instead of adding huge page support to our own implementation.
 // The OffsetPageTable type assumes that the complete physical memory is mapped to the virtual address space at some offset. 
-use x86_64::structures::paging::OffsetPageTable;
+use x86_64::structures::paging::{OffsetPageTable, frame};
+
+use bootloader::bootinfo::MemoryMap;
+use bootloader::bootinfo::MemoryRegionType;
 
 /// Initialize a new OffsetPageTable.
 ///
@@ -95,8 +98,69 @@ unsafe impl FrameAllocator<Size4KiB> for EmptyFrameAllocator {
 // the difficulty of creating a new mapping depends on the virtual page that we want to map. In the easiest case, the level 1 page table for the page already exists and we just need to write a single entry. In the most difficult case, the page is in a memory region for which no level 3 exists yet, so we need to create new level 3, level 2 and level 1 page tables first.
 // For calling our create_example_mapping function with the EmptyFrameAllocator, we need to choose a page for which all page tables already exist. To find such a page, we can utilize the fact that the bootloader loads itself in the first megabyte of the virtual address space. This means that a valid level 1 table exists for all pages in this region. Thus, we can choose any unused page in this memory region for our example mapping, such as the page at address 0. Normally, this page should stay unused to guarantee that dereferencing a null pointer causes a page fault, so we know that the bootloader leaves it unmapped.
 
+/// Allocating Frames
+/// A FrameAllocator that returns usable frames from the bootloader's memory map.
+pub struct BootInfoFrameAllocator {
+    // 'static reference to the memory map passed by the bootloader
+    // the memory map is provided by the BIOS/UEFI firmware. It can only be queried very early in the boot process, so the bootloader already calls the respective functions for us. 
+    memory_map: &'static MemoryMap,
+    // next field that keeps track of the number of the next frame that the allocator should return
+    next: usize,
+}
 
+impl BootInfoFrameAllocator {
+    /// Create a FrameAllocator from the passed memory map.
+    ///
+    /// This function is unsafe because the caller must guarantee that the passed
+    /// memory map is valid. The main requirement is that all frames that are marked
+    /// as `USABLE` in it are really unused
+    /// 
+    /// The init function initializes a BootInfoFrameAllocator with a given memory map. 
+    /// Since we don’t know if the usable frames of the memory map were already used somewhere else, our init function must be unsafe to require additional guarantees from the caller.
+    pub unsafe fn init(memory_map: &'static MemoryMap) -> Self {
+        BootInfoFrameAllocator {
+            memory_map,
+            // The next field is initialized with 0 and will be increased for every frame allocation to avoid returning the same frame twice.
+            next: 0,
+        }
+    }
+}
 
+impl BootInfoFrameAllocator {
+    /// Returns an iterator over the usable frames specified in the memory map.
+    /// This function uses iterator combinator methods to transform the initial MemoryMap into an iterator of usable physical frames:
+    /// The return type of the function uses the impl Trait feature. This way, we can specify that we return some type that implements the Iterator trait with item type PhysFrame but don’t need to name the concrete return type. This is important here because we can’t name the concrete type since it depends on unnamable closure types.
+    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> {
+        // get usable regions from memory map
+        // 1. call the iter method to convert the memory map to an iterator of MemoryRegions.
+        let regions = self.memory_map.iter();
+        // 2. use the filter method to skip any reserved or otherwise unavailable regions.
+        let usable_regions = regions
+                .filter(|r| r.region_type == MemoryRegionType::Usable);
+        // map each region to its address range
+        // 3.  use the map combinator and Rust’s range syntax to transform our iterator of memory regions to an iterator of address ranges.
+        let addr_ranges = usable_regions
+                .map(|r| r.range.start_addr()..r.range.end_addr());
+        // transform to an iterator of frame start addresses
+        // 4. use flat_map to transform the address ranges into an iterator of frame start addresses, choosing every 4096th address using step_by. 
+        //    Since 4096 bytes (= 4 KiB) is the page size, we get the start address of each frame. 
+        //    The bootloader page-aligns all usable memory areas so that we don’t need any alignment or rounding code here. 
+        //    By using flat_map instead of map, we get an Iterator<Item = u64> instead of an Iterator<Item = Iterator<Item = u64>>.
+        let frame_addresses = addr_ranges.flat_map(|r| r.step_by(4096));
+        // create `PhysFrame` types from the start addresses
+        // 5.  convert the start addresses to PhysFrame types to construct an Iterator<Item = PhysFrame>.
+        frame_addresses.map(|addr| PhysFrame::containing_address(PhysAddr::new(addr)))
+    }
+}
 
-
+/// Implementing the FrameAllocator Trait
+unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
+    fn allocate_frame(&mut self) -> Option<PhysFrame> {
+        // 1. use the usable_frames method to get an iterator of usable frames from the memory map.
+        let frame = self.usable_frames().nth(self.next);
+        // 2. increase self.next by one so that we return the following frame on the next call.
+        self.next += 1;
+        frame
+    }
+}
 

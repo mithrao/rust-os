@@ -26,12 +26,13 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     let mut mapper = unsafe {
         memory::init(phys_mem_offset)
     };
-
     
-    // create the mapping
-    let mut frame_allocator = memory::EmptyFrameAllocator;
-    // map an unused page
-    let page = Page::containing_address(VirtAddr::new(0));
+    // create the mapping with BooInfoFrameAllocator
+    let mut frame_allocator = unsafe {
+        memory::BootInfoFrameAllocator::init(&boot_info.memory_map)
+    };
+    // Creating that mapping only worked because the level 1 table responsible for the page at address 0 already exists. 
+    let page = Page::containing_address(VirtAddr::new(0xdeadbeaf000));
     // 1. Create the mapping for the page at address 0 by calling our create_example_mapping function with a mutable reference to the mapper and the frame_allocator instances. 
     //    This maps the page to the VGA text buffer frame, so we should see any write to it on the screen.
     memory::create_example_mapping(page, &mut mapper, &mut frame_allocator);
@@ -44,7 +45,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
         // We write the value 0x_f021_f077_f065_f04e, which represents the string “New!” on a white background. 
         page_ptr.offset(400).write_volatile(0x_f021_f077_f065_f04e);
     }
-    
+
     #[cfg(test)]
     test_main();
 
