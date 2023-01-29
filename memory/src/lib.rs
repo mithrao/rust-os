@@ -109,7 +109,6 @@ pub fn init() {
 // Since the entry point is only used in test mode, we add the #[cfg(test)] attribute to all items. We give our test entry point the distinct name test_kernel_main to avoid confusion with the kernel_main of our main.rs. We don’t use the BootInfo parameter for now, so we prefix the parameter name with a _ to silence the unused variable warning.
 #[cfg(test)]
 use bootloader::{entry_point, BootInfo};
-use pc_keyboard::layouts;
 
 #[cfg(test)]
 entry_point!(test_kernel_main);
