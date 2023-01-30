@@ -53,7 +53,7 @@ impl LinkedListAllocator {
         assert!(size >= mem::size_of::<ListNode>());
 
         // create a new list node and append it at the start of the list
-        // 1.  creates a new node on its stack with the size of the freed region
+        // 1. creates a new node on its stack with the size of the freed region
         let mut node = ListNode::new(size);
         // 2. uses the Option::take method to set the next pointer of the node to the current head pointer, 
         //    thereby resetting the head pointer to None.
@@ -102,7 +102,7 @@ impl LinkedListAllocator {
         let alloc_start = align_up(region.start_addr(), align);
         let alloc_end = alloc_start.checked_add(size).ok_or(())?;
 
-        if alloc_end < region.end_addr() {
+        if alloc_end > region.end_addr() {
             // region too small
             return Err(());
         }
