@@ -1,7 +1,10 @@
-use bump::BumpAllocator;
+use linked_list::LinkedListAllocator;
+// use bump::BumpAllocator;
 
 // bump allocator
 pub mod bump;
+// linked list allocator
+pub mod linked_list;
 
 /// creating a kernel heap
 /// 
@@ -15,7 +18,8 @@ pub const HEAP_SIZE:  usize = 100 * 1024; // 100 KiB
 #[global_allocator]
 // The struct is named LockedHeap because it uses the spinning_top::Spinlock type for synchronization. This is required because multiple threads could access the ALLOCATOR static at the same time.
 // As always, when using a spinlock or a mutex, we need to be careful to not accidentally cause a deadlock. This means that we shouldn’t perform any allocations in interrupt handlers, since they can run at an arbitrary time and might interrupt an in-progress allocation.
-static ALLOCATOR: Locked<BumpAllocator> = Locked::new(BumpAllocator::new());
+static ALLOCATOR: Locked<LinkedListAllocator> = 
+    Locked::new(LinkedListAllocator::new());
 
 use x86_64::{
     structures::paging::{

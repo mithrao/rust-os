@@ -7,6 +7,8 @@
 #![feature(abi_x86_interrupt)]
 // specifies a function that is called when an allocation error occurs
 #![feature(alloc_error_handler)]
+// enable the use of mutable references in const functions
+#![feature(const_mut_refs)]
 
 // the allocator interface
 // The first step in implementing a heap allocator is to add a dependency on the built-in alloc crate. Like the core crate, it is a subset of the standard library that additionally contains the allocation and collection types. 
