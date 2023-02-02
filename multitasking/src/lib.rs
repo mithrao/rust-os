@@ -25,6 +25,7 @@ pub mod gdt;
 pub mod memory;
 // dynamic meory allocator
 pub mod allocator;
+pub mod task;
 
 pub trait Testable {
     fn run(&self) -> ();

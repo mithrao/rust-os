@@ -10,7 +10,7 @@ extern crate alloc;
 use blog_os::{println, allocator};
 use core::panic::PanicInfo;
 use bootloader::{BootInfo, entry_point};
-use alloc::{boxed::Box, vec, vec::Vec, rc::Rc};
+use blog_os::task::{Task, simple_executor::SimpleExecutor};
 
 // Since our _start function is called externally from the bootloader, no checking of our function signature occurs. This means that we could let it take arbitrary arguments without any compilation errors, but it would fail or cause undefined behavior at runtime.
 // To make sure that the entry point function always has the correct signature that the bootloader expects, the bootloader crate provides an entry_point macro that provides a type-checked way to define a Rust function as the entry point. Let’s rewrite our entry point function to use this macro:
@@ -38,25 +38,19 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     allocator::init_heap(&mut mapper, &mut frame_allocator)
         .expect("heap initialization failed");
 
-    // allocate a number on the heap
-    let heap_value = Box::new(41);
-    // print the underlying heap pointers using the {:p} formatting specifier
-    println!("heap_value at {:p}", heap_value);
-
-    // create a dynamically sized vector
-    let mut vec = Vec::new();
-    for i in 0..500 {
-        vec.push(i);
-    }
-    println!("vec at {:p}", vec.as_slice());
-
-    // create a reference counted vector -> will be freed when count reaches 0
-    let reference_counted = Rc::new(vec![1, 2, 3]);
-    let cloned_reference = reference_counted.clone();
-    // use the Rc::strong_count function to print the current reference count before and after dropping an instance (using core::mem::drop).
-    println!("current reference count is {} now", Rc::strong_count(&cloned_reference));
-    core::mem::drop(reference_counted);
-    println!("reference count is {} now", Rc::strong_count(&cloned_reference));
+    // 1. a new instance of our SimpleExecutor type is created with an empty task_queue
+    let mut executor = SimpleExecutor::new();
+    // 2. call the asynchronous example_task function, which returns a future
+    //    this future in the Task type, which moves it to the heap and pins it, and then add the task to the task_queue of the executor through the spawn method.
+    executor.spawn(Task::new(example_task()));
+    // 3. then call the run method to start the execution of the single task in the queue. This involves:
+    //    - Popping the task from the front of the task_queue.
+    //    - Creating a RawWaker for the task, converting it to a Waker instance, and then creating a Context instance from it.
+    //    - Calling the poll method on the future of the task, using the Context we just created.
+    //    - Since the example_task does not wait for anything, it can directly run till its end on the first poll call. This is where the “async number: 42” line is printed.
+    //    - Since the example_task directly returns Poll::Ready, it is not added back to the task queue.
+    executor.run();
+    // 4. The run method returns after the task_queue becomes empty.
 
     #[cfg(test)]
     test_main();
@@ -82,4 +76,14 @@ fn panic(info: &PanicInfo) -> ! {
 #[test_case]
 fn trivial_assertion() {
     assert_eq!(1, 1);
+}
+
+async fn async_number() -> u32 {
+    42
+}
+
+async fn example_task() {
+    // To run the future returned by example_task, we need to call poll on it until it signals its completion by returning Poll::Ready.
+    let number = async_number().await;
+    println!("async number: {}", number);
 }
