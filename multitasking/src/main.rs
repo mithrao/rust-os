@@ -10,7 +10,7 @@ extern crate alloc;
 use blog_os::{println, allocator};
 use core::panic::PanicInfo;
 use bootloader::{BootInfo, entry_point};
-use blog_os::task::{Task, simple_executor::SimpleExecutor};
+use blog_os::task::{Task, simple_executor::SimpleExecutor, keyboard};
 
 // Since our _start function is called externally from the bootloader, no checking of our function signature occurs. This means that we could let it take arbitrary arguments without any compilation errors, but it would fail or cause undefined behavior at runtime.
 // To make sure that the entry point function always has the correct signature that the bootloader expects, the bootloader crate provides an entry_point macro that provides a type-checked way to define a Rust function as the entry point. Let’s rewrite our entry point function to use this macro:
@@ -43,6 +43,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // 2. call the asynchronous example_task function, which returns a future
     //    this future in the Task type, which moves it to the heap and pins it, and then add the task to the task_queue of the executor through the spawn method.
     executor.spawn(Task::new(example_task()));
+
+    // new: add the print_keypresses task to our executor in our main.rs to get working keyboard input again:
+    executor.spawn(Task::new(keyboard::print_keypresses()));
+    
     // 3. then call the run method to start the execution of the single task in the queue. This involves:
     //    - Popping the task from the front of the task_queue.
     //    - Creating a RawWaker for the task, converting it to a Waker instance, and then creating a Context instance from it.
@@ -87,3 +91,4 @@ async fn example_task() {
     let number = async_number().await;
     println!("async number: {}", number);
 }
+

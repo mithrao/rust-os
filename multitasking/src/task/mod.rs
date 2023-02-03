@@ -3,6 +3,7 @@ use core::task::{Context, Poll};
 use alloc::boxed::Box;
 
 pub mod simple_executor;
+pub mod keyboard;
 
 /// The Task struct is a newtype wrapper around a pinned, heap-allocated, and dynamically dispatched future with the empty type () as output.
 /// 

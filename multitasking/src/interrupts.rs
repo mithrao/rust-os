@@ -98,41 +98,22 @@ extern "x86-interrupt" fn timer_interrupt_handler(
     }
 }
 
-// keyboard interrupt handler
+/// keyboard interrupt handler
+/// 
+/// Currently, we handle the keyboard input directly in the interrupt handler. This is not a good idea for the long term because interrupt handlers should stay as short as possible as they might interrupt important work.
+/// Instead, interrupt handlers should only perform the minimal amount of work necessary (e.g., reading the keyboard scancode) and leave the rest of the work (e.g., interpreting the scancode) to a background task.
 extern "x86-interrupt" fn keyboard_interrupt_handler(
     _stack_frame: InterruptStackFrame)
 {
-    use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
-    use spin::Mutex;
     use x86_64::instructions::port::Port;
 
-    // 首先我们使用 lazy_static 宏创建一个受到Mutex同步锁保护的 Keyboard 对象，初始化参数为美式键盘布局以及Set-1。至于 HandleControl，它可以设定为将 ctrl+[a-z] 映射为Unicode字符 U+0001 至 U+001A，但我们不想这样，所以使用了 Ignore 选项让 ctrl 仅仅表现为一个正常键位。
-    lazy_static! {
-        static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> =
-            Mutex::new(Keyboard::new(layouts::Us104Key, ScancodeSet1,
-                HandleControl::Ignore)
-            );
-    }
-
-    // 对于每一个中断，我们都会为 KEYBOARD 加锁，从键盘控制器获取扫描码并将其传入 add_byte 函数，并将其转化为 Option<KeyEvent> 结构。KeyEvent 包括了触发本次中断的按键信息，以及子动作是按下还是释放。
-    let mut keyboard = KEYBOARD.lock();
-    // Reading the Scancodes from the data port of the PS/2 controller, which is the I/O port with the number 0x60:
     let mut port = Port::new(0x60);
-    // We use the Port type of the x86_64 crate to read a byte from the keyboard’s data port. This byte is called the scancode and it represents the key press/release.
     let scancode: u8 = unsafe {
         port.read()
     };
-
-    // Interpreting the Scancodes
-    // 要处理KeyEvent，我们还需要将其传入 process_keyevent 函数，将其转换为人类可读的字符，若果有必要，也会对字符进行一些处理。典型例子就是，要判断 A 键按下后输入的是小写 a 还是大写 A，这要取决于shift键是否同时被按下。
-    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
-        if let Some(key) = keyboard.process_keyevent(key_event) {
-            match key {
-                DecodedKey::Unicode(character) => print!("{}", character),
-                DecodedKey::RawKey(key) => print!("{:?}", key),
-            }
-        }
-    }
+    // removed all the keyboard handling code from this functio
+    // call `add_scancode` (in task/keyboard.rs) on keyboard interrupts
+    crate::task::keyboard::add_scancode(scancode);
 
     unsafe {
         PICS.lock()

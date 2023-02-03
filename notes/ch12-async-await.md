@@ -203,3 +203,22 @@ The idea behind the waker API is that a special Waker type is passed to each inv
 
 We see that futures and async/await fit the cooperative multitasking pattern perfectly; they just use some different terminology. In the following, we will therefore use the terms “task” and “future” interchangeably.
 
+## async keyboard input
+Currently, we handle the keyboard input directly in the interrupt handler. This is not a good idea for the long term because interrupt handlers should stay as short as possible as they might interrupt important work. 
+
+Instead, interrupt handlers should only perform the minimal amount of work necessary (e.g., reading the keyboard scancode) and *leave the rest of the work* (e.g., interpreting the scancode) *to a background tas*k.
+
+**scancode queue**
+A common pattern for delegating work to a background task is to create some sort of queue. The interrupt handler pushes units of work to the queue, and the background task handles the work in the queue.
+
+![](https://i.imgur.com/h8Po7tM.png)
+
+- the interrupt handler only reads the scancode from the keyboard, pushes it to the queue, and then returns.
+- The keyboard task sits on the other end of the queue and interprets and handles each scancode that is pushed to it
+
+A simple implementation of that queue could be a mutex-protected VecDeque. However, using mutexes in interrupt handlers is not a good idea since it can easily lead to deadlocks. 
+
+To prevent these problems, we need a queue implementation that does not require mutexes or allocations for its push operation. Such queues can be implemented by using lock-free atomic operations for pushing and popping elements.
+=> crossbeam - `ArrayQueue`
+
+
